@@ -59,8 +59,8 @@ class RapidoSystem implements Serializable {
       }
     }
     if (!adminExists) {
-      users.add(new Admin("System Admin", "0000000000", "admin", "admin123"));
-      System.out.println("Default admin created: admin/admin123");
+      users.add(new Admin("System Admin", "0000000000", "adminhemant", "hemant123"));
+      System.out.println("Default admin created: adminhemant/hemant123");
       saveData();
     }
   }
