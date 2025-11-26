@@ -16,7 +16,7 @@ A comprehensive Java-based ride-sharing application that simulates real-world ri
 - **Driver Matching**: Automatic assignment of available drivers to ride requests
 - **Payment System**: Multiple payment methods (UPI, Cash, Wallet)
 - **Real-time Tracking**: ETA calculation and ride status updates
-- **Data Persistence**: Automatic saving and loading of all system data
+- **Data Persistence**: Automatic saving and loading of all system data in JSON format
 - **Admin Controls**: Comprehensive user and ride management tools
 
 ## 🛠️ Technical Architecture
@@ -28,14 +28,24 @@ A comprehensive Java-based ride-sharing application that simulates real-world ri
 - **Driver**: Handles ride acceptance, earnings, and online status
 - **Admin**: System administration and user management
 - **Ride**: Complete ride lifecycle management with receipt generation
-- **RapidoSystem**: Main system controller with menu navigation and data persistence
+- **RapidoSystem**: Main system controller with menu navigation and JSON data persistence
 
 ### Design Patterns
 
-- **Serialization**: For data persistence across sessions
+- **JSON Serialization**: For human-readable data persistence across sessions
 - **Polymorphism**: Dynamic dashboard rendering based on user role
 - **Encapsulation**: Secure data access through getters/setters
 - **Iterator Pattern**: Safe collection traversal for user management
+
+## 📁 Data Storage
+
+The system uses human-readable JSON format (`rapido_data.json`) instead of binary serialization:
+
+- **File Location**: `rapido_data.json` in the application directory
+- **Format**: Readable JSON with proper formatting
+- **Backup**: You can easily backup, edit, or inspect the data file
+- **Structure**: Contains separate arrays for users and rides with all relevant information
+
 
 ## 📋 Prerequisites
 
@@ -58,3 +68,32 @@ A comprehensive Java-based ride-sharing application that simulates real-world ri
 
 4. **Run the application:**
    -java rapido.Main
+
+### Example JSON Structure:
+
+```json
+{
+  "users": [
+    {
+      "name": "John Doe",
+      "phone": "1234567890",
+      "username": "johndoe",
+      "password": "password123",
+      "role": "RIDER"
+    }
+  ],
+  "rides": [
+    {
+      "rideId": "RIDE123456789",
+      "pickupLocation": "Location A",
+      "dropLocation": "Location B",
+      "distance": 5.5,
+      "fare": 44.0,
+      "status": "COMPLETED",
+      "riderUsername": "johndoe",
+      "driverUsername": "driver1"
+    }
+  ]
+}
+
+```

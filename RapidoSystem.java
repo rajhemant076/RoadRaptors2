@@ -11,8 +11,8 @@ class RapidoSystem implements Serializable {
   private double basePricePerKm;
   private Random random;
 
-  // File names for data persistence
-  private static final String DATA_FILE = "rapido_data.dat";
+  // File names for data persistence - changed to JSON
+  private static final String DATA_FILE = "rapido_data.json";
 
   public RapidoSystem() {
     this.users = new ArrayList<>();
@@ -23,18 +23,19 @@ class RapidoSystem implements Serializable {
     initializeDefaultAdmin();
   }
 
-  // File handling methods
-  @SuppressWarnings("unchecked")
+  // File handling methods - changed to JSON format
   private void loadData() {
-    try (ObjectInputStream ois = new ObjectInputStream(new FileInputStream(DATA_FILE))) {
-      RapidoSystem savedSystem = (RapidoSystem) ois.readObject();
-      this.users = savedSystem.users;
-      this.rides = savedSystem.rides;
-      this.basePricePerKm = savedSystem.basePricePerKm;
-      System.out.println("Data loaded successfully!");
+    try (BufferedReader reader = new BufferedReader(new FileReader(DATA_FILE))) {
+      StringBuilder jsonContent = new StringBuilder();
+      String line;
+      while ((line = reader.readLine()) != null) {
+        jsonContent.append(line);
+      }
+      parseJsonData(jsonContent.toString());
+      System.out.println("Data loaded successfully from JSON!");
     } catch (FileNotFoundException e) {
       System.out.println("No existing data file found. Starting fresh...");
-    } catch (IOException | ClassNotFoundException e) {
+    } catch (IOException e) {
       System.out.println("Error loading data: " + e.getMessage());
       // Initialize fresh data if loading fails
       this.users = new ArrayList<>();
@@ -42,12 +43,294 @@ class RapidoSystem implements Serializable {
     }
   }
 
+  private void parseJsonData(String jsonData) {
+    if (jsonData.trim().isEmpty())
+      return;
+
+    try {
+      // Remove outer braces and split main sections
+      String cleanData = jsonData.trim().substring(1, jsonData.length() - 1);
+      String[] sections = cleanData.split("\"rides\":");
+
+      if (sections.length >= 1) {
+        // Parse users section
+        String usersSection = sections[0].replace("\"users\":", "").trim();
+        usersSection = usersSection.substring(1, usersSection.length() - 1); // Remove array brackets
+        parseUsers(usersSection);
+      }
+
+      if (sections.length >= 2) {
+        // Parse rides section
+        String ridesSection = sections[1].trim();
+        if (ridesSection.endsWith("}")) {
+          ridesSection = ridesSection.substring(0, ridesSection.length() - 1);
+        }
+        ridesSection = ridesSection.substring(1, ridesSection.length() - 1); // Remove array brackets
+        parseRides(ridesSection);
+      }
+    } catch (Exception e) {
+      System.out.println("Error parsing JSON data: " + e.getMessage());
+    }
+  }
+
+  private void parseUsers(String usersJson) {
+    if (usersJson.trim().isEmpty())
+      return;
+
+    String[] userObjects = usersJson.split("\\},\\s*\\{");
+    for (int i = 0; i < userObjects.length; i++) {
+      String userStr = userObjects[i];
+      if (i == 0)
+        userStr = userStr.substring(1); // Remove first {
+      if (i == userObjects.length - 1)
+        userStr = userStr.substring(0, userStr.length() - 1); // Remove last }
+
+      try {
+        User user = parseUserObject("{" + userStr + "}");
+        if (user != null) {
+          users.add(user);
+        }
+      } catch (Exception e) {
+        System.out.println("Error parsing user: " + e.getMessage());
+      }
+    }
+  }
+
+  private User parseUserObject(String userJson) {
+    try {
+      Map<String, String> fields = parseObjectFields(userJson);
+
+      String role = fields.get("role");
+      String name = fields.get("name");
+      String phone = fields.get("phone");
+      String username = fields.get("username");
+      String password = fields.get("password");
+
+      if ("RIDER".equals(role)) {
+        Rider rider = new Rider(name, phone, username, password);
+        return rider;
+      } else if ("DRIVER".equals(role)) {
+        String vehicleNo = fields.get("vehicleNo");
+        boolean approved = Boolean.parseBoolean(fields.get("approved"));
+        boolean online = Boolean.parseBoolean(fields.get("online"));
+        double earnings = Double.parseDouble(fields.get("earnings"));
+
+        Driver driver = new Driver(name, phone, vehicleNo, username, password);
+        driver.setApproved(approved);
+        driver.setOnline(online);
+        driver.addEarnings(earnings); // Set initial earnings
+
+        return driver;
+      } else if ("ADMIN".equals(role)) {
+        return new Admin(name, phone, username, password);
+      }
+    } catch (Exception e) {
+      System.out.println("Error parsing user object: " + e.getMessage());
+    }
+    return null;
+  }
+
+  private void parseRides(String ridesJson) {
+    if (ridesJson.trim().isEmpty())
+      return;
+
+    String[] rideObjects = ridesJson.split("\\},\\s*\\{");
+    for (int i = 0; i < rideObjects.length; i++) {
+      String rideStr = rideObjects[i];
+      if (i == 0)
+        rideStr = rideStr.substring(1); // Remove first {
+      if (i == rideObjects.length - 1)
+        rideStr = rideStr.substring(0, rideStr.length() - 1); // Remove last }
+
+      try {
+        Ride ride = parseRideObject("{" + rideStr + "}");
+        if (ride != null) {
+          rides.add(ride);
+        }
+      } catch (Exception e) {
+        System.out.println("Error parsing ride: " + e.getMessage());
+      }
+    }
+  }
+
+  private Ride parseRideObject(String rideJson) {
+    try {
+      Map<String, String> fields = parseObjectFields(rideJson);
+
+      String pickupLocation = fields.get("pickupLocation");
+      String dropLocation = fields.get("dropLocation");
+      double distance = Double.parseDouble(fields.get("distance"));
+      double fare = Double.parseDouble(fields.get("fare"));
+      int eta = Integer.parseInt(fields.get("eta"));
+      String status = fields.get("status");
+
+      // Find rider by username
+      String riderUsername = fields.get("riderUsername");
+      Rider rider = null;
+      for (User user : users) {
+        if (user instanceof Rider && user.getUsername().equals(riderUsername)) {
+          rider = (Rider) user;
+          break;
+        }
+      }
+
+      if (rider == null) {
+        System.out.println("Rider not found for ride: " + riderUsername);
+        return null;
+      }
+
+      Ride ride = new Ride(pickupLocation, dropLocation, distance, fare, eta, rider);
+      ride.setStatus(status);
+
+      // Find and set driver if exists
+      String driverUsername = fields.get("driverUsername");
+      if (driverUsername != null && !driverUsername.equals("null")) {
+        for (User user : users) {
+          if (user instanceof Driver && user.getUsername().equals(driverUsername)) {
+            ride.setDriver((Driver) user);
+            ((Driver) user).addAssignedRide(ride);
+            break;
+          }
+        }
+      }
+
+      // Set completion time if exists
+      String completionTimeStr = fields.get("completionTime");
+      if (completionTimeStr != null && !completionTimeStr.equals("null")) {
+        try {
+          SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+          ride.setCompletionTime(sdf.parse(completionTimeStr));
+        } catch (Exception e) {
+          System.out.println("Error parsing completion time: " + e.getMessage());
+        }
+      }
+
+      // Set payment info
+      ride.setPaymentMethod(fields.get("paymentMethod"));
+      ride.setUpiId(fields.get("upiId"));
+
+      rider.addRideToHistory(ride);
+      return ride;
+
+    } catch (Exception e) {
+      System.out.println("Error parsing ride object: " + e.getMessage());
+    }
+    return null;
+  }
+
+  private Map<String, String> parseObjectFields(String json) {
+    Map<String, String> fields = new HashMap<>();
+    String content = json.substring(1, json.length() - 1); // Remove outer braces
+    String[] pairs = content.split(",");
+
+    for (String pair : pairs) {
+      String[] keyValue = pair.split(":", 2);
+      if (keyValue.length == 2) {
+        String key = keyValue[0].trim().replace("\"", "");
+        String value = keyValue[1].trim();
+
+        // Remove quotes from string values
+        if (value.startsWith("\"") && value.endsWith("\"")) {
+          value = value.substring(1, value.length() - 1);
+        }
+
+        fields.put(key, value);
+      }
+    }
+    return fields;
+  }
+
   private void saveData() {
-    try (ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(DATA_FILE))) {
-      oos.writeObject(this);
+    try (BufferedWriter writer = new BufferedWriter(new FileWriter(DATA_FILE))) {
+      writer.write(toJsonString());
     } catch (IOException e) {
       System.out.println("Error saving data: " + e.getMessage());
     }
+  }
+
+  private String toJsonString() {
+    StringBuilder json = new StringBuilder();
+    json.append("{\n");
+
+    // Users array
+    json.append("  \"users\": [\n");
+    for (int i = 0; i < users.size(); i++) {
+      json.append(userToJson(users.get(i)));
+      if (i < users.size() - 1)
+        json.append(",");
+      json.append("\n");
+    }
+    json.append("  ],\n");
+
+    // Rides array
+    json.append("  \"rides\": [\n");
+    for (int i = 0; i < rides.size(); i++) {
+      json.append(rideToJson(rides.get(i)));
+      if (i < rides.size() - 1)
+        json.append(",");
+      json.append("\n");
+    }
+    json.append("  ]\n");
+
+    json.append("}");
+    return json.toString();
+  }
+
+  private String userToJson(User user) {
+    StringBuilder json = new StringBuilder();
+    json.append("    {\n");
+    json.append("      \"name\": \"").append(escapeJson(user.getName())).append("\",\n");
+    json.append("      \"phone\": \"").append(escapeJson(user.getPhone())).append("\",\n");
+    json.append("      \"username\": \"").append(escapeJson(user.getUsername())).append("\",\n");
+    json.append("      \"password\": \"").append(escapeJson(user.getPassword())).append("\",\n");
+    json.append("      \"role\": \"").append(user.getRole()).append("\"");
+
+    if (user instanceof Driver) {
+      Driver driver = (Driver) user;
+      json.append(",\n");
+      json.append("      \"vehicleNo\": \"").append(escapeJson(driver.getVehicleNo())).append("\",\n");
+      json.append("      \"approved\": ").append(driver.isApproved()).append(",\n");
+      json.append("      \"online\": ").append(driver.isOnline()).append(",\n");
+      json.append("      \"earnings\": ").append(driver.getEarnings());
+    }
+
+    json.append("\n    }");
+    return json.toString();
+  }
+
+  private String rideToJson(Ride ride) {
+    SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+    StringBuilder json = new StringBuilder();
+    json.append("    {\n");
+    json.append("      \"rideId\": \"").append(ride.getRideId()).append("\",\n");
+    json.append("      \"pickupLocation\": \"").append(escapeJson(ride.getPickupLocation())).append("\",\n");
+    json.append("      \"dropLocation\": \"").append(escapeJson(ride.getDropLocation())).append("\",\n");
+    json.append("      \"distance\": ").append(ride.getDistance()).append(",\n");
+    json.append("      \"fare\": ").append(ride.getFare()).append(",\n");
+    json.append("      \"eta\": ").append(ride.getEta()).append(",\n");
+    json.append("      \"status\": \"").append(ride.getStatus()).append("\",\n");
+    json.append("      \"riderUsername\": \"").append(ride.getRider().getUsername()).append("\",\n");
+    json.append("      \"driverUsername\": \"")
+        .append(ride.getDriver() != null ? ride.getDriver().getUsername() : "null").append("\",\n");
+    json.append("      \"bookingTime\": \"").append(sdf.format(ride.getBookingTime())).append("\",\n");
+    json.append("      \"completionTime\": \"")
+        .append(ride.getCompletionTime() != null ? sdf.format(ride.getCompletionTime()) : "null").append("\",\n");
+    json.append("      \"paymentMethod\": \"")
+        .append(ride.getPaymentMethod() != null ? escapeJson(ride.getPaymentMethod()) : "null").append("\",\n");
+    json.append("      \"upiId\": \"").append(ride.getUpiId() != null ? escapeJson(ride.getUpiId()) : "null")
+        .append("\"\n");
+    json.append("    }");
+    return json.toString();
+  }
+
+  private String escapeJson(String str) {
+    if (str == null)
+      return "";
+    return str.replace("\\", "\\\\")
+        .replace("\"", "\\\"")
+        .replace("\n", "\\n")
+        .replace("\r", "\\r")
+        .replace("\t", "\\t");
   }
 
   private void initializeDefaultAdmin() {
@@ -947,7 +1230,7 @@ class RapidoSystem implements Serializable {
     System.out.print("Enter username to remove: ");
     String username = scanner.nextLine();
 
-    if (username.equals("admin")) {
+    if (username.equals("adminhemant")) {
       System.out.println("Cannot remove admin user!");
       return;
     }
